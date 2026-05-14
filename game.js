@@ -45,6 +45,10 @@ const ui = {
   screenRoomCodeInput: document.getElementById("screenRoomCodeInput"),
   onlineNameInput: document.getElementById("onlineNameInput"),
   screenOnlineNameInput: document.getElementById("screenOnlineNameInput"),
+  refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
+  screenRefreshRoomsBtn: document.getElementById("screenRefreshRoomsBtn"),
+  roomList: document.getElementById("roomList"),
+  screenRoomList: document.getElementById("screenRoomList"),
   playerName: document.getElementById("playerName"),
   stats: {
     games: document.getElementById("statGames"),
@@ -97,6 +101,7 @@ const net = {
   room: null,
   lastSnapshot: 0,
   pendingConnect: null,
+  guestConnected: false,
 };
 
 const player = {
@@ -367,6 +372,10 @@ function focusGame() {
 function startGame() {
   if (isGuest()) {
     setOnlineStatus("Waiting for host to start.");
+    return;
+  }
+  if (state.online && net.role === "host" && !net.guestConnected) {
+    setOnlineStatus("Waiting for a friend to join first.");
     return;
   }
   setupAudio();
@@ -1637,6 +1646,10 @@ ui.createRoomBtn.addEventListener("click", createOnlineRoom);
 ui.joinRoomBtn.addEventListener("click", joinOnlineRoom);
 ui.screenCreateRoomBtn.addEventListener("click", createOnlineRoom);
 ui.screenJoinRoomBtn.addEventListener("click", joinOnlineRoom);
+ui.refreshRoomsBtn.addEventListener("click", requestRoomList);
+ui.screenRefreshRoomsBtn.addEventListener("click", requestRoomList);
+ui.onlineModeBtn.addEventListener("click", requestRoomList);
+ui.screenOnlineBtn.addEventListener("click", requestRoomList);
 ui.roomCodeInput.addEventListener("input", () => {
   const clean = ui.roomCodeInput.value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
   ui.roomCodeInput.value = clean;
@@ -1763,7 +1776,13 @@ function connectOnline(onConnect) {
 
 function createOnlineRoom() {
   setGameMode("online");
-  connectOnline(() => sendNet({ type: "create" }));
+  net.guestConnected = false;
+  const name = cleanName(ui.onlineNameInput.value || ui.playerName.value) || "Host";
+  connectOnline(() => sendNet({ type: "create", name }));
+}
+
+function requestRoomList() {
+  connectOnline(() => sendNet({ type: "list" }));
 }
 
 function joinOnlineRoom() {
@@ -1786,6 +1805,7 @@ function handleNetMessage(message) {
   if (message.type === "created") {
     net.role = "host";
     net.room = message.code;
+    net.guestConnected = false;
     ui.roomCodeInput.value = message.code;
     ui.screenRoomCodeInput.value = message.code;
     setOnlineStatus(`Room ${message.code}. Send this code to your friend, then press Start.`);
@@ -1802,12 +1822,19 @@ function handleNetMessage(message) {
   }
   if (message.type === "peer") {
     player2.name = cleanName(message.name) || "P2";
+    net.guestConnected = true;
     setOnlineStatus(`${player2.name} joined. Press Start Game to begin!`);
     showScreen("Online Session", "Friend Connected", `${player2.name} is ready. Press Start Game to begin!`, "Start Game");
     return;
   }
   if (message.type === "peer-left") {
+    net.guestConnected = false;
     setOnlineStatus("Friend left the room.");
+    showScreen("Online Session", "Room Created", "Friend disconnected. Share the code and wait for them to rejoin.", "Start Game");
+    return;
+  }
+  if (message.type === "rooms") {
+    renderRoomList(message.rooms);
     return;
   }
   if (message.type === "error") {
@@ -1826,6 +1853,36 @@ function handleNetMessage(message) {
   if (message.type === "snapshot" && net.role === "guest") {
     applySnapshot(message.snapshot);
   }
+}
+
+function renderRoomList(rooms) {
+  [ui.roomList, ui.screenRoomList].forEach(el => {
+    el.textContent = "";
+    if (rooms.length === 0) {
+      const li = document.createElement("li");
+      li.className = "room-empty";
+      li.textContent = "No open rooms right now";
+      el.appendChild(li);
+      return;
+    }
+    rooms.forEach(r => {
+      const li = document.createElement("li");
+      li.className = "room-item";
+      const name = document.createElement("span");
+      name.textContent = r.host;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Join";
+      btn.addEventListener("click", () => {
+        ui.roomCodeInput.value = r.code;
+        ui.screenRoomCodeInput.value = r.code;
+        joinOnlineRoom();
+      });
+      li.appendChild(name);
+      li.appendChild(btn);
+      el.appendChild(li);
+    });
+  });
 }
 
 function setOnlineStatus(text) {

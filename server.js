@@ -91,10 +91,20 @@ function handleMessage(socket, message) {
       }
     }
     const code = makeRoomCode();
-    rooms.set(code, { host: socket, guest: null });
+    const hostName = String(message.name || "Host").slice(0, 20);
+    rooms.set(code, { host: socket, guest: null, hostName });
     socket.roomCode = code;
     socket.role = "host";
     send(socket, { type: "created", code, role: "host" });
+    return;
+  }
+
+  if (message.type === "list") {
+    const open = [];
+    rooms.forEach((room, code) => {
+      if (!room.guest) open.push({ code, host: room.hostName });
+    });
+    send(socket, { type: "rooms", rooms: open });
     return;
   }
 
