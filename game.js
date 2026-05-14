@@ -1789,6 +1789,7 @@ function handleNetMessage(message) {
     ui.roomCodeInput.value = message.code;
     ui.screenRoomCodeInput.value = message.code;
     setOnlineStatus(`Room ${message.code}. Send this code to your friend, then press Start.`);
+    showScreen("Online Session", "Room Created", "Share the code below with your friend. Press Start Game once they've joined.", "Start Game");
     return;
   }
   if (message.type === "joined") {
@@ -1801,7 +1802,8 @@ function handleNetMessage(message) {
   }
   if (message.type === "peer") {
     player2.name = cleanName(message.name) || "P2";
-    setOnlineStatus(`${player2.name} joined room ${net.room}. Press Start.`);
+    setOnlineStatus(`${player2.name} joined. Press Start Game to begin!`);
+    showScreen("Online Session", "Friend Connected", `${player2.name} is ready. Press Start Game to begin!`, "Start Game");
     return;
   }
   if (message.type === "peer-left") {
