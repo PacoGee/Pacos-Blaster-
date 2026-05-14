@@ -48,9 +48,10 @@
           </div>
           <div id="onlinePanel" class="online-panel" hidden>
             <span id="onlineStatus">Create or join a room.</span>
-            <div class="online-code">
-              <button id="createRoomBtn" type="button">Create Room</button>
-              <input id="roomCodeInput" maxlength="5" placeholder="CODE" autocomplete="off" />
+            <button id="createRoomBtn" class="online-create-btn" type="button">Create Room &rarr; get a code to share</button>
+            <div class="online-divider">or join with a code</div>
+            <div class="online-join">
+              <input id="roomCodeInput" maxlength="5" placeholder="ROOM CODE" autocomplete="off" />
               <button id="joinRoomBtn" type="button">Join</button>
             </div>
           </div>
@@ -116,9 +117,10 @@
           </div>
           <div id="screenOnlinePanel" class="online-panel" hidden>
             <span id="screenOnlineStatus">Create a room or join with a code.</span>
-            <div class="online-code">
-              <button id="screenCreateRoomBtn" type="button">Create Room</button>
-              <input id="screenRoomCodeInput" maxlength="5" placeholder="CODE" autocomplete="off" />
+            <button id="screenCreateRoomBtn" class="online-create-btn" type="button">Create Room &rarr; get a code to share</button>
+            <div class="online-divider">or join with a code</div>
+            <div class="online-join">
+              <input id="screenRoomCodeInput" maxlength="5" placeholder="ROOM CODE" autocomplete="off" />
               <button id="screenJoinRoomBtn" type="button">Join</button>
             </div>
           </div>

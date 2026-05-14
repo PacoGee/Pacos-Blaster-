@@ -269,27 +269,54 @@ canvas {
   line-height: 1.35;
 }
 
-.online-code {
+.online-create-btn {
+  width: 100%;
+  min-height: 38px;
+  font-size: 13px;
+  text-align: left;
+  padding: 0 14px;
+}
+
+.online-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.online-divider::before,
+.online-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.online-join {
   display: grid;
-  grid-template-columns: 1fr 74px 64px;
+  grid-template-columns: 1fr 64px;
   gap: 8px;
 }
 
-.online-code button {
+.online-join button {
   min-height: 36px;
   padding: 0 10px;
   font-size: 13px;
 }
 
-.online-code input {
+.online-join input {
   min-width: 0;
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: #0e1410;
   color: var(--ink);
-  text-align: center;
-  font-weight: 900;
+  padding: 0 10px;
+  font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
 .help {

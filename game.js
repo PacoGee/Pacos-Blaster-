@@ -1628,10 +1628,14 @@ ui.joinRoomBtn.addEventListener("click", joinOnlineRoom);
 ui.screenCreateRoomBtn.addEventListener("click", createOnlineRoom);
 ui.screenJoinRoomBtn.addEventListener("click", joinOnlineRoom);
 ui.roomCodeInput.addEventListener("input", () => {
-  ui.screenRoomCodeInput.value = ui.roomCodeInput.value.toUpperCase();
+  const clean = ui.roomCodeInput.value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  ui.roomCodeInput.value = clean;
+  ui.screenRoomCodeInput.value = clean;
 });
 ui.screenRoomCodeInput.addEventListener("input", () => {
-  ui.roomCodeInput.value = ui.screenRoomCodeInput.value.toUpperCase();
+  const clean = ui.screenRoomCodeInput.value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  ui.screenRoomCodeInput.value = clean;
+  ui.roomCodeInput.value = clean;
 });
 ui.pauseBtn.addEventListener("click", () => {
   if (state.mode === "playing") {
@@ -1657,6 +1661,7 @@ ui.playerName.addEventListener("input", () => {
 });
 
 function handleKeyDown(event) {
+  if (event.target && event.target.tagName === "INPUT") return;
   if (event.pacosBlasterHandled) return;
   event.pacosBlasterHandled = true;
   const key = event.code || event.key;
