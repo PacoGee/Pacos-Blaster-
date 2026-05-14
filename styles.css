@@ -269,6 +269,30 @@ canvas {
   line-height: 1.35;
 }
 
+.online-name-field {
+  display: grid;
+  gap: 5px;
+}
+
+.online-name-field span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.online-name-field input {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #111713;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 14px;
+  outline: none;
+}
+
 .online-create-btn {
   width: 100%;
   min-height: 38px;

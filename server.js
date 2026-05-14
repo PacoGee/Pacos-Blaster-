@@ -102,7 +102,7 @@ function handleMessage(socket, message) {
     socket.roomCode = code;
     socket.role = "guest";
     send(socket, { type: "joined", code, role: "guest" });
-    send(room.host, { type: "peer", role: "guest" });
+    send(room.host, { type: "peer", role: "guest", name: message.name || "P2" });
     return;
   }
 

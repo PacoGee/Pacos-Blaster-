@@ -42,6 +42,8 @@ const ui = {
   screenCreateRoomBtn: document.getElementById("screenCreateRoomBtn"),
   screenJoinRoomBtn: document.getElementById("screenJoinRoomBtn"),
   screenRoomCodeInput: document.getElementById("screenRoomCodeInput"),
+  onlineNameInput: document.getElementById("onlineNameInput"),
+  screenOnlineNameInput: document.getElementById("screenOnlineNameInput"),
   playerName: document.getElementById("playerName"),
   stats: {
     games: document.getElementById("statGames"),
@@ -1653,12 +1655,19 @@ ui.resetBtn.addEventListener("click", () => {
   saveStats();
 });
 
-ui.playerName.addEventListener("input", () => {
-  player.name = cleanName(ui.playerName.value);
+function onNameInput(source) {
+  const val = source.value;
+  [ui.playerName, ui.onlineNameInput, ui.screenOnlineNameInput].forEach((el) => {
+    if (el !== source) el.value = val;
+  });
+  player.name = cleanName(val);
   stats = getProfile(player.name);
   updateHud();
   syncStats();
-});
+}
+ui.playerName.addEventListener("input", () => onNameInput(ui.playerName));
+ui.onlineNameInput.addEventListener("input", () => onNameInput(ui.onlineNameInput));
+ui.screenOnlineNameInput.addEventListener("input", () => onNameInput(ui.screenOnlineNameInput));
 
 function handleKeyDown(event) {
   if (event.target && event.target.tagName === "INPUT") return;
@@ -1747,8 +1756,9 @@ function joinOnlineRoom() {
     setOnlineStatus("Enter a room code first.");
     return;
   }
+  const name = cleanName(player.name);
   const socket = connectOnline();
-  const join = () => sendNet({ type: "join", code });
+  const join = () => sendNet({ type: "join", code, name });
   socket.addEventListener("open", join, { once: true });
   if (socket.readyState === WebSocket.OPEN) join();
 }
@@ -1776,7 +1786,8 @@ function handleNetMessage(message) {
     return;
   }
   if (message.type === "peer") {
-    setOnlineStatus(`Friend joined room ${net.room}. Press Start.`);
+    player2.name = cleanName(message.name) || "P2";
+    setOnlineStatus(`${player2.name} joined room ${net.room}. Press Start.`);
     return;
   }
   if (message.type === "peer-left") {
