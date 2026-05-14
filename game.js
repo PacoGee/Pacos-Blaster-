@@ -96,6 +96,7 @@ const net = {
   role: null,
   room: null,
   lastSnapshot: 0,
+  pendingConnect: null,
 };
 
 const player = {
@@ -1739,11 +1740,21 @@ function handleKeyDown(event) {
   }
 }
 
-function connectOnline() {
-  if (net.socket && net.socket.readyState <= 1) return net.socket;
+function connectOnline(onConnect) {
+  if (net.socket && net.socket.readyState === WebSocket.OPEN) {
+    if (onConnect) onConnect();
+    return net.socket;
+  }
+  net.pendingConnect = onConnect;
+  if (net.socket && net.socket.readyState === WebSocket.CONNECTING) return net.socket;
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   net.socket = new WebSocket(`${scheme}://${location.host}/session`);
-  net.socket.addEventListener("open", () => setOnlineStatus("Connected. Create or join a room."));
+  net.socket.addEventListener("open", () => {
+    setOnlineStatus("Connected. Create or join a room.");
+    const cb = net.pendingConnect;
+    net.pendingConnect = null;
+    if (cb) cb();
+  });
   net.socket.addEventListener("message", (event) => handleNetMessage(JSON.parse(event.data)));
   net.socket.addEventListener("close", () => setOnlineStatus("Disconnected."));
   net.socket.addEventListener("error", () => setOnlineStatus("Connection error."));
@@ -1752,9 +1763,7 @@ function connectOnline() {
 
 function createOnlineRoom() {
   setGameMode("online");
-  const socket = connectOnline();
-  socket.addEventListener("open", () => sendNet({ type: "create" }), { once: true });
-  if (socket.readyState === WebSocket.OPEN) sendNet({ type: "create" });
+  connectOnline(() => sendNet({ type: "create" }));
 }
 
 function joinOnlineRoom() {
@@ -1765,10 +1774,7 @@ function joinOnlineRoom() {
     return;
   }
   const name = cleanName(player.name);
-  const socket = connectOnline();
-  const join = () => sendNet({ type: "join", code, name });
-  socket.addEventListener("open", join, { once: true });
-  if (socket.readyState === WebSocket.OPEN) join();
+  connectOnline(() => sendNet({ type: "join", code, name }));
 }
 
 function sendNet(data) {

@@ -83,6 +83,13 @@ function handleSocketData(socket, chunk) {
 
 function handleMessage(socket, message) {
   if (message.type === "create") {
+    if (socket.roomCode) {
+      const old = rooms.get(socket.roomCode);
+      if (old) {
+        if (old.guest) send(old.guest, { type: "peer-left" });
+        rooms.delete(socket.roomCode);
+      }
+    }
     const code = makeRoomCode();
     rooms.set(code, { host: socket, guest: null });
     socket.roomCode = code;
