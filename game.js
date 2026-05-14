@@ -327,6 +327,12 @@ function showScreen(kicker, title, text, buttonText = "Start Game") {
 function setGameMode(mode) {
   const online = mode === "online";
   const dual = mode === "dual" || online;
+  if (!online && net.socket) {
+    net.socket.close();
+    net.socket = null;
+    net.role = null;
+    net.room = null;
+  }
   state.online = online;
   state.multiplayer = dual;
   [ui.singleModeBtn, ui.screenSingleBtn].forEach((button) => button.classList.toggle("is-selected", mode === "single"));
