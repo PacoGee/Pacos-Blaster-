@@ -102,6 +102,8 @@ const net = {
   lastSnapshot: 0,
   pendingConnect: null,
   guestConnected: false,
+  hostRoundWins: 0,
+  guestRoundWins: 0,
 };
 
 const player = {
@@ -122,6 +124,7 @@ const player = {
   stepPhase: 0,
   color: "#43df55",
   accent: "#0d2414",
+  lives: 1,
 };
 
 const player2 = {
@@ -142,6 +145,7 @@ const player2 = {
   stepPhase: 0,
   color: "#ee2b20",
   accent: "#26100e",
+  lives: 1,
 };
 
 let profiles = loadProfiles();
@@ -379,6 +383,12 @@ function startGame() {
     return;
   }
   ui.primaryBtn.classList.remove("btn-go");
+  if (state.online) {
+    net.hostRoundWins = 0;
+    net.guestRoundWins = 0;
+    startRound();
+    return;
+  }
   setupAudio();
   player.name = cleanName(ui.playerName.value);
   ui.playerName.value = player.name;
@@ -575,10 +585,14 @@ function makeEnemy(type, x, y) {
 }
 
 function updateHud() {
-  hud.name.textContent = state.multiplayer ? `${player.name} + P2` : player.name;
+  hud.name.textContent = state.online
+    ? `${net.hostRoundWins}-${net.guestRoundWins}`
+    : state.multiplayer ? `${player.name} + P2` : player.name;
   hud.level.textContent = state.level;
   hud.score.textContent = state.score;
-  hud.lives.textContent = state.lives;
+  hud.lives.textContent = state.online
+    ? `${player.lives}/${player2.lives}`
+    : state.lives;
   hud.bombs.textContent = state.multiplayer
     ? `${bombsRemaining(player)}/${bombsRemaining(player2)}`
     : bombsRemaining(player);
@@ -801,22 +815,101 @@ function killPlayer(actor = player) {
   if (!actor.alive) return;
   actor.alive = false;
   actor.deathT = 1.2;
-  state.lives -= 1;
   stats.deaths += 1;
   saveStats();
-  updateHud();
   state.shake = 10;
   beep(98, 0.4, "sawtooth", 0.09);
   if (state.respawnTimer) clearTimeout(state.respawnTimer);
-  state.respawnTimer = setTimeout(() => {
-    state.respawnTimer = null;
-    if (state.lives <= 0) {
-      state.mode = "over";
-      showScreen("Game Over", "Paco Down", `Score ${state.score}. You reached level ${state.level}.`, "Try Again");
-    } else if (state.mode === "playing") {
-      respawnPlayer(actor);
-    }
-  }, 1000);
+  if (state.online) {
+    actor.lives -= 1;
+    updateHud();
+    state.respawnTimer = setTimeout(() => {
+      state.respawnTimer = null;
+      if (actor.lives <= 0) {
+        if (net.role === "host") endRound(actor);
+      } else if (state.mode === "playing") {
+        respawnPlayer(actor);
+      }
+    }, 1000);
+  } else {
+    state.lives -= 1;
+    updateHud();
+    state.respawnTimer = setTimeout(() => {
+      state.respawnTimer = null;
+      if (state.lives <= 0) {
+        state.mode = "over";
+        showScreen("Game Over", "Paco Down", `Score ${state.score}. You reached level ${state.level}.`, "Try Again");
+      } else if (state.mode === "playing") {
+        respawnPlayer(actor);
+      }
+    }, 1000);
+  }
+}
+
+function endRound(loser) {
+  if (state.mode !== "playing") return;
+  state.mode = "roundOver";
+  const other = loser === player ? player2 : player;
+  const draw = other.lives <= 0;
+  let winner;
+  if (draw) {
+    winner = "draw";
+  } else if (loser === player) {
+    winner = "guest";
+    net.guestRoundWins += 1;
+  } else {
+    winner = "host";
+    net.hostRoundWins += 1;
+  }
+  const matchOver = net.hostRoundWins >= 2 || net.guestRoundWins >= 2;
+  sendNet({ type: "round-over", winner, hostWins: net.hostRoundWins, guestWins: net.guestRoundWins, matchOver });
+  showRoundResultScreen(winner, matchOver);
+}
+
+function showRoundResultScreen(winner, matchOver) {
+  const iWon = (net.role === "host" && winner === "host") || (net.role === "guest" && winner === "guest");
+  const isDraw = winner === "draw";
+  const score = `${net.hostRoundWins}–${net.guestRoundWins}`;
+  updateHud();
+  if (matchOver) {
+    const title = isDraw ? "Match Drawn" : iWon ? "Victory!" : "Defeated";
+    const body = isDraw
+      ? `Both players fell. Final score: ${score}.`
+      : iWon ? `You win the match ${score}! Well played.`
+              : `You lose the match ${score}. Better luck next time.`;
+    showScreen("Online Match", title, body, net.role === "host" ? "Play Again" : "Waiting...");
+    state.mode = "over";
+  } else {
+    const title = isDraw ? "Round Drawn" : iWon ? "Round Won!" : "Round Lost";
+    const body = isDraw
+      ? `Neither player survived. Score: ${score}.`
+      : iWon ? `You won this round! Score: ${score}.`
+             : `Opponent won this round. Score: ${score}.`;
+    showScreen("Online Match", title, body, net.role === "host" ? "Next Round" : "Waiting...");
+  }
+  setOnlineStatus(`Score: ${score}`);
+}
+
+function startRound() {
+  if (isGuest()) { setOnlineStatus("Waiting for host to start."); return; }
+  player.lives = 1;
+  player2.lives = 1;
+  setupAudio();
+  player.name = cleanName(ui.playerName.value);
+  ui.playerName.value = player.name;
+  stats = getProfile(player.name);
+  state.mode = "playing";
+  state.level = 1;
+  state.score = 0;
+  state.savedScore = 0;
+  state.lives = 1;
+  state.maxBombs = 3;
+  state.flame = 2;
+  state.playerSpeed = 7.4;
+  loadLevel(1);
+  hideScreen();
+  sendNet({ type: "start" });
+  sendSnapshot(true);
 }
 
 function respawnPlayer(actor = player) {
@@ -1622,6 +1715,7 @@ function roundRect(x, y, w, h, r) {
 
 ui.primaryBtn.addEventListener("click", () => {
   if (state.mode === "title" || state.mode === "over") startGame();
+  else if (state.mode === "roundOver") startRound();
   else if (state.mode === "paused") {
     state.mode = "playing";
     hideScreen();
@@ -1850,6 +1944,13 @@ function handleNetMessage(message) {
     if (message.action === "bomb") placeBomb(player2);
     return;
   }
+  if (message.type === "round-over" && net.role === "guest") {
+    net.hostRoundWins = message.hostWins;
+    net.guestRoundWins = message.guestWins;
+    state.mode = message.matchOver ? "over" : "roundOver";
+    showRoundResultScreen(message.winner, message.matchOver);
+    return;
+  }
   if (message.type === "start" && net.role === "guest") {
     hideScreen();
     return;
@@ -1922,6 +2023,8 @@ function makeSnapshot() {
     savedScore: state.savedScore,
     player: stripActor(player),
     player2: stripActor(player2),
+    hostRoundWins: net.hostRoundWins,
+    guestRoundWins: net.guestRoundWins,
   };
 }
 
@@ -1942,6 +2045,7 @@ function stripActor(actor) {
     invuln: actor.invuln,
     deathT: actor.deathT,
     stepPhase: actor.stepPhase,
+    lives: actor.lives,
   };
 }
 
@@ -1972,6 +2076,8 @@ function applySnapshot(snapshot) {
   });
   Object.assign(player, snapshot.player);
   Object.assign(player2, snapshot.player2);
+  if (snapshot.hostRoundWins !== undefined) net.hostRoundWins = snapshot.hostRoundWins;
+  if (snapshot.guestRoundWins !== undefined) net.guestRoundWins = snapshot.guestRoundWins;
   updateHud();
 }
 
