@@ -7,6 +7,7 @@ const rows = 11;
 const floorOffsetY = 0;
 const storageKey = "pacosBlasterStats";
 const profileStorageKey = "pacosBlasterProfiles";
+const nameStorageKey = "pacosBlasterName";
 
 const hud = {
   name: document.getElementById("hudName"),
@@ -42,6 +43,12 @@ const ui = {
   screenCreateRoomBtn: document.getElementById("screenCreateRoomBtn"),
   screenJoinRoomBtn: document.getElementById("screenJoinRoomBtn"),
   screenRoomCodeInput: document.getElementById("screenRoomCodeInput"),
+  onlineNameInput: document.getElementById("onlineNameInput"),
+  screenOnlineNameInput: document.getElementById("screenOnlineNameInput"),
+  refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
+  screenRefreshRoomsBtn: document.getElementById("screenRefreshRoomsBtn"),
+  roomList: document.getElementById("roomList"),
+  screenRoomList: document.getElementById("screenRoomList"),
   playerName: document.getElementById("playerName"),
   stats: {
     games: document.getElementById("statGames"),
@@ -93,6 +100,10 @@ const net = {
   role: null,
   room: null,
   lastSnapshot: 0,
+  pendingConnect: null,
+  guestConnected: false,
+  hostRoundWins: 0,
+  guestRoundWins: 0,
 };
 
 const player = {
@@ -113,6 +124,7 @@ const player = {
   stepPhase: 0,
   color: "#43df55",
   accent: "#0d2414",
+  lives: 1,
 };
 
 const player2 = {
@@ -133,6 +145,7 @@ const player2 = {
   stepPhase: 0,
   color: "#ee2b20",
   accent: "#26100e",
+  lives: 1,
 };
 
 let profiles = loadProfiles();
@@ -325,6 +338,12 @@ function showScreen(kicker, title, text, buttonText = "Start Game") {
 function setGameMode(mode) {
   const online = mode === "online";
   const dual = mode === "dual" || online;
+  if (!online && net.socket) {
+    net.socket.close();
+    net.socket = null;
+    net.role = null;
+    net.room = null;
+  }
   state.online = online;
   state.multiplayer = dual;
   [ui.singleModeBtn, ui.screenSingleBtn].forEach((button) => button.classList.toggle("is-selected", mode === "single"));
@@ -357,6 +376,17 @@ function focusGame() {
 function startGame() {
   if (isGuest()) {
     setOnlineStatus("Waiting for host to start.");
+    return;
+  }
+  if (state.online && net.role === "host" && !net.guestConnected) {
+    setOnlineStatus("Waiting for a friend to join first.");
+    return;
+  }
+  ui.primaryBtn.classList.remove("btn-go");
+  if (state.online) {
+    net.hostRoundWins = 0;
+    net.guestRoundWins = 0;
+    startRound();
     return;
   }
   setupAudio();
@@ -458,7 +488,8 @@ function findEnemySpawns(exit) {
       spawns.push({ x, y });
     }
   }
-  return shuffle(spawns).sort((a, b) => distance(b.x, b.y, player.gx, player.gy) - distance(a.x, a.y, player.gx, player.gy));
+  const cx = (cols - 1) / 2, cy = (rows - 1) / 2;
+  return shuffle(spawns).sort((a, b) => distance(a.x, a.y, cx, cy) - distance(b.x, b.y, cx, cy));
 }
 
 function hasOpenNeighbor(x, y) {
@@ -554,10 +585,14 @@ function makeEnemy(type, x, y) {
 }
 
 function updateHud() {
-  hud.name.textContent = state.multiplayer ? `${player.name} + P2` : player.name;
+  hud.name.textContent = state.online
+    ? `${net.hostRoundWins}-${net.guestRoundWins}`
+    : state.multiplayer ? `${player.name} + P2` : player.name;
   hud.level.textContent = state.level;
   hud.score.textContent = state.score;
-  hud.lives.textContent = state.lives;
+  hud.lives.textContent = state.online
+    ? `${player.lives}/${player2.lives}`
+    : state.lives;
   hud.bombs.textContent = state.multiplayer
     ? `${bombsRemaining(player)}/${bombsRemaining(player2)}`
     : bombsRemaining(player);
@@ -780,22 +815,101 @@ function killPlayer(actor = player) {
   if (!actor.alive) return;
   actor.alive = false;
   actor.deathT = 1.2;
-  state.lives -= 1;
   stats.deaths += 1;
   saveStats();
-  updateHud();
   state.shake = 10;
   beep(98, 0.4, "sawtooth", 0.09);
   if (state.respawnTimer) clearTimeout(state.respawnTimer);
-  state.respawnTimer = setTimeout(() => {
-    state.respawnTimer = null;
-    if (state.lives <= 0) {
-      state.mode = "over";
-      showScreen("Game Over", "Paco Down", `Score ${state.score}. You reached level ${state.level}.`, "Try Again");
-    } else if (state.mode === "playing") {
-      respawnPlayer(actor);
-    }
-  }, 1000);
+  if (state.online) {
+    actor.lives -= 1;
+    updateHud();
+    state.respawnTimer = setTimeout(() => {
+      state.respawnTimer = null;
+      if (actor.lives <= 0) {
+        if (net.role === "host") endRound(actor);
+      } else if (state.mode === "playing") {
+        respawnPlayer(actor);
+      }
+    }, 1000);
+  } else {
+    state.lives -= 1;
+    updateHud();
+    state.respawnTimer = setTimeout(() => {
+      state.respawnTimer = null;
+      if (state.lives <= 0) {
+        state.mode = "over";
+        showScreen("Game Over", "Paco Down", `Score ${state.score}. You reached level ${state.level}.`, "Try Again");
+      } else if (state.mode === "playing") {
+        respawnPlayer(actor);
+      }
+    }, 1000);
+  }
+}
+
+function endRound(loser) {
+  if (state.mode !== "playing") return;
+  state.mode = "roundOver";
+  const other = loser === player ? player2 : player;
+  const draw = other.lives <= 0;
+  let winner;
+  if (draw) {
+    winner = "draw";
+  } else if (loser === player) {
+    winner = "guest";
+    net.guestRoundWins += 1;
+  } else {
+    winner = "host";
+    net.hostRoundWins += 1;
+  }
+  const matchOver = net.hostRoundWins >= 2 || net.guestRoundWins >= 2;
+  sendNet({ type: "round-over", winner, hostWins: net.hostRoundWins, guestWins: net.guestRoundWins, matchOver });
+  showRoundResultScreen(winner, matchOver);
+}
+
+function showRoundResultScreen(winner, matchOver) {
+  const iWon = (net.role === "host" && winner === "host") || (net.role === "guest" && winner === "guest");
+  const isDraw = winner === "draw";
+  const score = `${net.hostRoundWins}–${net.guestRoundWins}`;
+  updateHud();
+  if (matchOver) {
+    const title = isDraw ? "Match Drawn" : iWon ? "Victory!" : "Defeated";
+    const body = isDraw
+      ? `Both players fell. Final score: ${score}.`
+      : iWon ? `You win the match ${score}! Well played.`
+              : `You lose the match ${score}. Better luck next time.`;
+    showScreen("Online Match", title, body, net.role === "host" ? "Play Again" : "Waiting...");
+    state.mode = "over";
+  } else {
+    const title = isDraw ? "Round Drawn" : iWon ? "Round Won!" : "Round Lost";
+    const body = isDraw
+      ? `Neither player survived. Score: ${score}.`
+      : iWon ? `You won this round! Score: ${score}.`
+             : `Opponent won this round. Score: ${score}.`;
+    showScreen("Online Match", title, body, net.role === "host" ? "Next Round" : "Waiting...");
+  }
+  setOnlineStatus(`Score: ${score}`);
+}
+
+function startRound() {
+  if (isGuest()) { setOnlineStatus("Waiting for host to start."); return; }
+  player.lives = 1;
+  player2.lives = 1;
+  setupAudio();
+  player.name = cleanName(ui.playerName.value);
+  ui.playerName.value = player.name;
+  stats = getProfile(player.name);
+  state.mode = "playing";
+  state.level = 1;
+  state.score = 0;
+  state.savedScore = 0;
+  state.lives = 1;
+  state.maxBombs = 3;
+  state.flame = 2;
+  state.playerSpeed = 7.4;
+  loadLevel(1);
+  hideScreen();
+  sendNet({ type: "start" });
+  sendSnapshot(true);
 }
 
 function respawnPlayer(actor = player) {
@@ -1601,6 +1715,7 @@ function roundRect(x, y, w, h, r) {
 
 ui.primaryBtn.addEventListener("click", () => {
   if (state.mode === "title" || state.mode === "over") startGame();
+  else if (state.mode === "roundOver") startRound();
   else if (state.mode === "paused") {
     state.mode = "playing";
     hideScreen();
@@ -1627,11 +1742,19 @@ ui.createRoomBtn.addEventListener("click", createOnlineRoom);
 ui.joinRoomBtn.addEventListener("click", joinOnlineRoom);
 ui.screenCreateRoomBtn.addEventListener("click", createOnlineRoom);
 ui.screenJoinRoomBtn.addEventListener("click", joinOnlineRoom);
+ui.refreshRoomsBtn.addEventListener("click", requestRoomList);
+ui.screenRefreshRoomsBtn.addEventListener("click", requestRoomList);
+ui.onlineModeBtn.addEventListener("click", requestRoomList);
+ui.screenOnlineBtn.addEventListener("click", requestRoomList);
 ui.roomCodeInput.addEventListener("input", () => {
-  ui.screenRoomCodeInput.value = ui.roomCodeInput.value.toUpperCase();
+  const clean = ui.roomCodeInput.value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  ui.roomCodeInput.value = clean;
+  ui.screenRoomCodeInput.value = clean;
 });
 ui.screenRoomCodeInput.addEventListener("input", () => {
-  ui.roomCodeInput.value = ui.screenRoomCodeInput.value.toUpperCase();
+  const clean = ui.screenRoomCodeInput.value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  ui.screenRoomCodeInput.value = clean;
+  ui.roomCodeInput.value = clean;
 });
 ui.pauseBtn.addEventListener("click", () => {
   if (state.mode === "playing") {
@@ -1649,14 +1772,23 @@ ui.resetBtn.addEventListener("click", () => {
   saveStats();
 });
 
-ui.playerName.addEventListener("input", () => {
-  player.name = cleanName(ui.playerName.value);
+function onNameInput(source) {
+  const val = source.value;
+  [ui.playerName, ui.onlineNameInput, ui.screenOnlineNameInput].forEach((el) => {
+    if (el !== source) el.value = val;
+  });
+  player.name = cleanName(val);
+  localStorage.setItem(nameStorageKey, player.name);
   stats = getProfile(player.name);
   updateHud();
   syncStats();
-});
+}
+ui.playerName.addEventListener("input", () => onNameInput(ui.playerName));
+ui.onlineNameInput.addEventListener("input", () => onNameInput(ui.onlineNameInput));
+ui.screenOnlineNameInput.addEventListener("input", () => onNameInput(ui.screenOnlineNameInput));
 
 function handleKeyDown(event) {
+  if (event.target && event.target.tagName === "INPUT") return;
   if (event.pacosBlasterHandled) return;
   event.pacosBlasterHandled = true;
   const key = event.code || event.key;
@@ -1717,11 +1849,21 @@ function handleKeyDown(event) {
   }
 }
 
-function connectOnline() {
-  if (net.socket && net.socket.readyState <= 1) return net.socket;
+function connectOnline(onConnect) {
+  if (net.socket && net.socket.readyState === WebSocket.OPEN) {
+    if (onConnect) onConnect();
+    return net.socket;
+  }
+  net.pendingConnect = onConnect;
+  if (net.socket && net.socket.readyState === WebSocket.CONNECTING) return net.socket;
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   net.socket = new WebSocket(`${scheme}://${location.host}/session`);
-  net.socket.addEventListener("open", () => setOnlineStatus("Connected. Create or join a room."));
+  net.socket.addEventListener("open", () => {
+    setOnlineStatus("Connected. Create or join a room.");
+    const cb = net.pendingConnect;
+    net.pendingConnect = null;
+    if (cb) cb();
+  });
   net.socket.addEventListener("message", (event) => handleNetMessage(JSON.parse(event.data)));
   net.socket.addEventListener("close", () => setOnlineStatus("Disconnected."));
   net.socket.addEventListener("error", () => setOnlineStatus("Connection error."));
@@ -1730,9 +1872,13 @@ function connectOnline() {
 
 function createOnlineRoom() {
   setGameMode("online");
-  const socket = connectOnline();
-  socket.addEventListener("open", () => sendNet({ type: "create" }), { once: true });
-  if (socket.readyState === WebSocket.OPEN) sendNet({ type: "create" });
+  net.guestConnected = false;
+  const name = cleanName(ui.onlineNameInput.value || ui.playerName.value) || "Host";
+  connectOnline(() => sendNet({ type: "create", name }));
+}
+
+function requestRoomList() {
+  connectOnline(() => sendNet({ type: "list" }));
 }
 
 function joinOnlineRoom() {
@@ -1742,10 +1888,8 @@ function joinOnlineRoom() {
     setOnlineStatus("Enter a room code first.");
     return;
   }
-  const socket = connectOnline();
-  const join = () => sendNet({ type: "join", code });
-  socket.addEventListener("open", join, { once: true });
-  if (socket.readyState === WebSocket.OPEN) join();
+  const name = cleanName(player.name);
+  connectOnline(() => sendNet({ type: "join", code, name }));
 }
 
 function sendNet(data) {
@@ -1757,9 +1901,11 @@ function handleNetMessage(message) {
   if (message.type === "created") {
     net.role = "host";
     net.room = message.code;
+    net.guestConnected = false;
     ui.roomCodeInput.value = message.code;
     ui.screenRoomCodeInput.value = message.code;
     setOnlineStatus(`Room ${message.code}. Send this code to your friend, then press Start.`);
+    showScreen("Online Session", "Room Created", "Share the code below with your friend. Press Start Game once they've joined.", "Start Game");
     return;
   }
   if (message.type === "joined") {
@@ -1771,11 +1917,22 @@ function handleNetMessage(message) {
     return;
   }
   if (message.type === "peer") {
-    setOnlineStatus(`Friend joined room ${net.room}. Press Start.`);
+    player2.name = cleanName(message.name) || "P2";
+    net.guestConnected = true;
+    ui.primaryBtn.classList.add("btn-go");
+    setOnlineStatus(`${player2.name} joined. Press Start Game to begin!`);
+    showScreen("Online Session", "Friend Connected", `${player2.name} is ready. Press Start Game to begin!`, "Start Game");
     return;
   }
   if (message.type === "peer-left") {
+    net.guestConnected = false;
+    ui.primaryBtn.classList.remove("btn-go");
     setOnlineStatus("Friend left the room.");
+    showScreen("Online Session", "Room Created", "Friend disconnected. Share the code and wait for them to rejoin.", "Start Game");
+    return;
+  }
+  if (message.type === "rooms") {
+    renderRoomList(message.rooms);
     return;
   }
   if (message.type === "error") {
@@ -1787,6 +1944,13 @@ function handleNetMessage(message) {
     if (message.action === "bomb") placeBomb(player2);
     return;
   }
+  if (message.type === "round-over" && net.role === "guest") {
+    net.hostRoundWins = message.hostWins;
+    net.guestRoundWins = message.guestWins;
+    state.mode = message.matchOver ? "over" : "roundOver";
+    showRoundResultScreen(message.winner, message.matchOver);
+    return;
+  }
   if (message.type === "start" && net.role === "guest") {
     hideScreen();
     return;
@@ -1794,6 +1958,36 @@ function handleNetMessage(message) {
   if (message.type === "snapshot" && net.role === "guest") {
     applySnapshot(message.snapshot);
   }
+}
+
+function renderRoomList(rooms) {
+  [ui.roomList, ui.screenRoomList].forEach(el => {
+    el.textContent = "";
+    if (rooms.length === 0) {
+      const li = document.createElement("li");
+      li.className = "room-empty";
+      li.textContent = "No open rooms right now";
+      el.appendChild(li);
+      return;
+    }
+    rooms.forEach(r => {
+      const li = document.createElement("li");
+      li.className = "room-item";
+      const name = document.createElement("span");
+      name.textContent = r.host;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Join";
+      btn.addEventListener("click", () => {
+        ui.roomCodeInput.value = r.code;
+        ui.screenRoomCodeInput.value = r.code;
+        joinOnlineRoom();
+      });
+      li.appendChild(name);
+      li.appendChild(btn);
+      el.appendChild(li);
+    });
+  });
 }
 
 function setOnlineStatus(text) {
@@ -1829,6 +2023,8 @@ function makeSnapshot() {
     savedScore: state.savedScore,
     player: stripActor(player),
     player2: stripActor(player2),
+    hostRoundWins: net.hostRoundWins,
+    guestRoundWins: net.guestRoundWins,
   };
 }
 
@@ -1849,6 +2045,7 @@ function stripActor(actor) {
     invuln: actor.invuln,
     deathT: actor.deathT,
     stepPhase: actor.stepPhase,
+    lives: actor.lives,
   };
 }
 
@@ -1879,6 +2076,8 @@ function applySnapshot(snapshot) {
   });
   Object.assign(player, snapshot.player);
   Object.assign(player2, snapshot.player2);
+  if (snapshot.hostRoundWins !== undefined) net.hostRoundWins = snapshot.hostRoundWins;
+  if (snapshot.guestRoundWins !== undefined) net.guestRoundWins = snapshot.guestRoundWins;
   updateHud();
 }
 
@@ -1886,6 +2085,14 @@ window.addEventListener("keydown", handleKeyDown, true);
 document.addEventListener("keydown", handleKeyDown, true);
 canvas.addEventListener("keydown", handleKeyDown, true);
 canvas.addEventListener("pointerdown", focusGame);
+
+const savedName = localStorage.getItem(nameStorageKey);
+if (savedName) {
+  player.name = savedName;
+  [ui.playerName, ui.onlineNameInput, ui.screenOnlineNameInput].forEach((el) => { el.value = savedName; });
+  stats = getProfile(savedName);
+  syncStats();
+}
 
 buildPreviewBoard();
 setGameMode("single");

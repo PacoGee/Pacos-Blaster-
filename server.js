@@ -61,13 +61,17 @@ server.on("upgrade", (request, socket) => {
 
   socket.roomCode = null;
   socket.role = null;
-  socket.on("data", (buffer) => handleSocketData(socket, buffer));
+  socket.frameBuffer = Buffer.alloc(0);
+  socket.on("data", (chunk) => handleSocketData(socket, chunk));
   socket.on("close", () => leaveRoom(socket));
   socket.on("error", () => leaveRoom(socket));
 });
 
-function handleSocketData(socket, buffer) {
-  const messages = decodeFrames(buffer);
+function handleSocketData(socket, chunk) {
+  socket.frameBuffer = Buffer.concat([socket.frameBuffer, chunk]);
+  const { messages, pings, remaining } = decodeFrames(socket.frameBuffer);
+  socket.frameBuffer = remaining;
+  pings.forEach((payload) => sendPong(socket, payload));
   messages.forEach((message) => {
     try {
       handleMessage(socket, JSON.parse(message));
@@ -79,11 +83,28 @@ function handleSocketData(socket, buffer) {
 
 function handleMessage(socket, message) {
   if (message.type === "create") {
+    if (socket.roomCode) {
+      const old = rooms.get(socket.roomCode);
+      if (old) {
+        if (old.guest) send(old.guest, { type: "peer-left" });
+        rooms.delete(socket.roomCode);
+      }
+    }
     const code = makeRoomCode();
-    rooms.set(code, { host: socket, guest: null });
+    const hostName = String(message.name || "Host").slice(0, 20);
+    rooms.set(code, { host: socket, guest: null, hostName });
     socket.roomCode = code;
     socket.role = "host";
     send(socket, { type: "created", code, role: "host" });
+    return;
+  }
+
+  if (message.type === "list") {
+    const open = [];
+    rooms.forEach((room, code) => {
+      if (!room.guest) open.push({ code, host: room.hostName });
+    });
+    send(socket, { type: "rooms", rooms: open });
     return;
   }
 
@@ -98,7 +119,7 @@ function handleMessage(socket, message) {
     socket.roomCode = code;
     socket.role = "guest";
     send(socket, { type: "joined", code, role: "guest" });
-    send(room.host, { type: "peer", role: "guest" });
+    send(room.host, { type: "peer", role: "guest", name: message.name || "P2" });
     return;
   }
 
@@ -135,34 +156,49 @@ function send(socket, data) {
   socket.write(Buffer.concat([header, payload]));
 }
 
+function sendPong(socket, payload) {
+  if (!socket || socket.destroyed) return;
+  const header = payload.length < 126
+    ? Buffer.from([0x8a, payload.length])
+    : Buffer.from([0x8a, 126, payload.length >> 8, payload.length & 255]);
+  socket.write(Buffer.concat([header, payload]));
+}
+
 function decodeFrames(buffer) {
   const messages = [];
+  const pings = [];
   let offset = 0;
   while (offset + 2 <= buffer.length) {
+    const start = offset;
     const byte1 = buffer[offset++];
     const byte2 = buffer[offset++];
     const opcode = byte1 & 0x0f;
     let length = byte2 & 0x7f;
     if (length === 126) {
+      if (offset + 2 > buffer.length) { offset = start; break; }
       length = buffer.readUInt16BE(offset);
       offset += 2;
     } else if (length === 127) {
+      if (offset + 8 > buffer.length) { offset = start; break; }
       length = Number(buffer.readBigUInt64BE(offset));
       offset += 8;
     }
     const masked = (byte2 & 0x80) !== 0;
+    if (masked && offset + 4 > buffer.length) { offset = start; break; }
     const mask = masked ? buffer.subarray(offset, offset + 4) : null;
     if (masked) offset += 4;
-    const payload = buffer.subarray(offset, offset + length);
+    if (offset + length > buffer.length) { offset = start; break; }
+    const payload = Buffer.from(buffer.subarray(offset, offset + length));
     offset += length;
-    if (opcode === 8) return messages;
-    if (opcode !== 1) continue;
     if (masked) {
       for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
     }
+    if (opcode === 8) break;
+    if (opcode === 9) { pings.push(payload); continue; }
+    if (opcode !== 1) continue;
     messages.push(payload.toString("utf8"));
   }
-  return messages;
+  return { messages, pings, remaining: buffer.subarray(offset) };
 }
 
 server.listen(port, host, () => {
