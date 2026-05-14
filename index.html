@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paco's Blaster</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Game status">
+        <div class="brand">
+          <span class="signal-dot"></span>
+          <div>
+            <strong>Paco's Blaster</strong>
+            <span>Field Labyrinth</span>
+          </div>
+        </div>
+        <div class="hud">
+          <div><span>Player</span><strong id="hudName">Player</strong></div>
+          <div><span>Level</span><strong id="hudLevel">1</strong></div>
+          <div><span>Score</span><strong id="hudScore">0</strong></div>
+          <div><span>Lives</span><strong id="hudLives">3</strong></div>
+          <div><span>Bombs</span><strong id="hudBombs">1</strong></div>
+          <div><span>Flame</span><strong id="hudFlame">2</strong></div>
+        </div>
+      </section>
+
+      <section class="game-wrap">
+        <canvas id="game" width="832" height="704" tabindex="0" aria-label="Paco's Blaster game board"></canvas>
+        <aside class="panel">
+          <h1>Paco's Blaster</h1>
+          <label class="name-field">
+            <span>Player name</span>
+            <input id="playerName" maxlength="14" autocomplete="nickname" value="Paco" />
+          </label>
+          <div class="button-row">
+            <button id="startBtn" type="button">Start</button>
+            <button id="pauseBtn" type="button">Pause</button>
+          </div>
+          <div class="mode-card">
+            <span>Play mode</span>
+            <div class="mode-row" aria-label="Game mode">
+              <button id="singleModeBtn" class="is-selected" type="button">Single</button>
+              <button id="multiModeBtn" type="button">Dual</button>
+              <button id="onlineModeBtn" type="button">Online</button>
+            </div>
+          </div>
+          <div id="onlinePanel" class="online-panel" hidden>
+            <span id="onlineStatus">Create or join a room.</span>
+            <div class="online-code">
+              <button id="createRoomBtn" type="button">Create Room</button>
+              <input id="roomCodeInput" maxlength="5" placeholder="CODE" autocomplete="off" />
+              <button id="joinRoomBtn" type="button">Join</button>
+            </div>
+          </div>
+          <div class="help">
+            <span>P1</span><strong>Arrows + Space</strong>
+            <span>P2</span><strong>WASD + F</strong>
+            <span>Enter</span><strong>Start / continue</strong>
+          </div>
+          <div class="stats">
+            <h2>Statistics</h2>
+            <dl>
+              <div><dt>Games</dt><dd id="statGames">0</dd></div>
+              <div><dt>Total score</dt><dd id="statTotalScore">0</dd></div>
+              <div><dt>Best score</dt><dd id="statBestScore">0</dd></div>
+              <div><dt>Best level</dt><dd id="statBestLevel">1</dd></div>
+              <div><dt>Wins</dt><dd id="statWins">0</dd></div>
+              <div><dt>Deaths</dt><dd id="statDeaths">0</dd></div>
+              <div><dt>Enemies</dt><dd id="statEnemies">0</dd></div>
+              <div><dt>Bombs used</dt><dd id="statBombs">0</dd></div>
+            </dl>
+          </div>
+          <div class="stars">
+            <h2>All-Star Table</h2>
+            <ol id="allStarList"></ol>
+          </div>
+        </aside>
+      </section>
+
+      <section id="overlay" class="overlay is-open" aria-live="polite">
+        <div class="screen-card">
+          <div class="intro-stage" aria-hidden="true">
+            <span class="intro-maze maze-one"></span>
+            <span class="intro-maze maze-two"></span>
+            <span class="ampel-figure ampel-walk">
+              <span class="ampel-hat"></span>
+              <span class="ampel-head"></span>
+              <span class="ampel-body"></span>
+              <span class="ampel-arm arm-back"></span>
+              <span class="ampel-arm arm-front"></span>
+              <span class="ampel-leg leg-back"></span>
+              <span class="ampel-leg leg-front"></span>
+            </span>
+            <span class="ampel-figure ampel-stop">
+              <span class="ampel-hat"></span>
+              <span class="ampel-head"></span>
+              <span class="ampel-body"></span>
+              <span class="ampel-arm arm-back"></span>
+              <span class="ampel-arm arm-front"></span>
+              <span class="ampel-leg leg-back"></span>
+              <span class="ampel-leg leg-front"></span>
+            </span>
+          </div>
+          <p id="screenKicker">Single Player</p>
+          <h2 id="screenTitle">Paco's Blaster</h2>
+          <p id="screenText">Guide the little signal man through bomb smoke, odd enemies, hidden power-ups, and the exit tile.</p>
+          <div class="mode-card mode-card-screen">
+            <span>Choose play mode</span>
+            <div class="mode-row mode-row-screen" aria-label="Choose mode">
+              <button id="screenSingleBtn" class="is-selected" type="button">Single</button>
+              <button id="screenMultiBtn" type="button">Dual</button>
+              <button id="screenOnlineBtn" type="button">Online</button>
+            </div>
+          </div>
+          <div id="screenOnlinePanel" class="online-panel" hidden>
+            <span id="screenOnlineStatus">Create a room or join with a code.</span>
+            <div class="online-code">
+              <button id="screenCreateRoomBtn" type="button">Create Room</button>
+              <input id="screenRoomCodeInput" maxlength="5" placeholder="CODE" autocomplete="off" />
+              <button id="screenJoinRoomBtn" type="button">Join</button>
+            </div>
+          </div>
+          <div class="button-row">
+            <button id="primaryBtn" type="button">Start Game</button>
+            <button id="resetBtn" type="button">Reset Stats</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
