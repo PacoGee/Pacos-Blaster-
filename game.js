@@ -7,6 +7,7 @@ const rows = 11;
 const floorOffsetY = 0;
 const storageKey = "pacosBlasterStats";
 const profileStorageKey = "pacosBlasterProfiles";
+const nameStorageKey = "pacosBlasterName";
 
 const hud = {
   name: document.getElementById("hudName"),
@@ -1667,6 +1668,7 @@ function onNameInput(source) {
     if (el !== source) el.value = val;
   });
   player.name = cleanName(val);
+  localStorage.setItem(nameStorageKey, player.name);
   stats = getProfile(player.name);
   updateHud();
   syncStats();
@@ -1908,6 +1910,14 @@ window.addEventListener("keydown", handleKeyDown, true);
 document.addEventListener("keydown", handleKeyDown, true);
 canvas.addEventListener("keydown", handleKeyDown, true);
 canvas.addEventListener("pointerdown", focusGame);
+
+const savedName = localStorage.getItem(nameStorageKey);
+if (savedName) {
+  player.name = savedName;
+  [ui.playerName, ui.onlineNameInput, ui.screenOnlineNameInput].forEach((el) => { el.value = savedName; });
+  stats = getProfile(savedName);
+  syncStats();
+}
 
 buildPreviewBoard();
 setGameMode("single");
