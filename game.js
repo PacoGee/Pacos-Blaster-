@@ -378,6 +378,7 @@ function startGame() {
     setOnlineStatus("Waiting for a friend to join first.");
     return;
   }
+  ui.primaryBtn.classList.remove("btn-go");
   setupAudio();
   player.name = cleanName(ui.playerName.value);
   ui.playerName.value = player.name;
@@ -1823,12 +1824,14 @@ function handleNetMessage(message) {
   if (message.type === "peer") {
     player2.name = cleanName(message.name) || "P2";
     net.guestConnected = true;
+    ui.primaryBtn.classList.add("btn-go");
     setOnlineStatus(`${player2.name} joined. Press Start Game to begin!`);
     showScreen("Online Session", "Friend Connected", `${player2.name} is ready. Press Start Game to begin!`, "Start Game");
     return;
   }
   if (message.type === "peer-left") {
     net.guestConnected = false;
+    ui.primaryBtn.classList.remove("btn-go");
     setOnlineStatus("Friend left the room.");
     showScreen("Online Session", "Room Created", "Friend disconnected. Share the code and wait for them to rejoin.", "Start Game");
     return;

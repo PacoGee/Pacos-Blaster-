@@ -52,6 +52,16 @@ button:active {
   box-shadow: 0 2px 0 #8f5b0f, 0 8px 14px rgba(0, 0, 0, 0.24);
 }
 
+@keyframes btn-go {
+  0%, 100% { background: linear-gradient(#7eff6e, #23c832); box-shadow: 0 4px 0 #0f7a1a, 0 12px 20px rgba(0,0,0,0.28); }
+  50%       { background: linear-gradient(#b8ffb0, #4fdf5a); box-shadow: 0 4px 0 #0f7a1a, 0 0 24px 6px rgba(80,230,80,0.55); }
+}
+
+.btn-go {
+  animation: btn-go 0.7s ease-in-out infinite;
+  color: #0a1f0a;
+}
+
 .shell {
   min-height: 100%;
   display: grid;
