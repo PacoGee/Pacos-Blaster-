@@ -478,7 +478,8 @@ function findEnemySpawns(exit) {
       spawns.push({ x, y });
     }
   }
-  return shuffle(spawns).sort((a, b) => distance(b.x, b.y, player.gx, player.gy) - distance(a.x, a.y, player.gx, player.gy));
+  const cx = (cols - 1) / 2, cy = (rows - 1) / 2;
+  return shuffle(spawns).sort((a, b) => distance(a.x, a.y, cx, cy) - distance(b.x, b.y, cx, cy));
 }
 
 function hasOpenNeighbor(x, y) {
